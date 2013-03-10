@@ -46,7 +46,7 @@ func newBitmask(mask uint32) bitmask {
 	return bitmask{mask: mask, shift: shift}
 }
 
-func (bm bitmask) Decode(data mpegFrame) int {
+func (bm bitmask) Decode(data FrameHeader) int {
 	return int((uint32(data) & bm.mask) >> bm.shift)
 }
 
@@ -66,11 +66,14 @@ var (
 	emphasisMask      = newBitmask(0x3)
 )
 
-type mpegFrame uint32
+type FrameHeader uint32
 
 // TODO: unit tests for all methods!
-func newMpegFrame(buf []byte) (*mpegFrame, os.Error) {
-	f := mpegFrame(unpackInteger(buf))
+func NewFrameHeader(buf []byte) (*FrameHeader, os.Error) {
+	if len(buf) != 4 {
+		return nil, os.NewError(fmt.Sprintf("decoding MPEG frame: expected %d bytes, got %d", 4, len(buf)))
+	}
+	f := FrameHeader(unpackInteger(buf))
 	err := f.Verify()
 	if err != nil {
 		return nil, err
@@ -78,7 +81,7 @@ func newMpegFrame(buf []byte) (*mpegFrame, os.Error) {
 	return &f, nil
 }
 
-func (f mpegFrame) Verify() (err os.Error) {
+func (f FrameHeader) Verify() (err os.Error) {
 	sync := frameSyncMask.Decode(f)
 	if sync != FRAME_SYNC {
 		return os.NewError("Frame sync missing")
@@ -93,7 +96,7 @@ func (f mpegFrame) Verify() (err os.Error) {
 	f.Version()
 	f.Layer()
 	f.Protection()
-	f.Bitrate()
+	f.BitrateInKbps()
 	f.SampleRate()
 	f.Padding()
 	f.Private()
@@ -106,7 +109,7 @@ func (f mpegFrame) Verify() (err os.Error) {
 }
 
 // TODO: test
-func (f mpegFrame) Version() string {
+func (f FrameHeader) Version() string {
 	switch versionMask.Decode(f) {
 	case 0:
 		return MPEG_VERSION_2_5
@@ -118,7 +121,7 @@ func (f mpegFrame) Version() string {
 	panic("Invalid mpeg audio version in frame header")
 }
 
-func (f mpegFrame) layer() int {
+func (f FrameHeader) layer() int {
 	switch layerMask.Decode(f) {
 	case 1:
 		return 3
@@ -130,7 +133,7 @@ func (f mpegFrame) layer() int {
 	panic("Invalid mpeg layer description in frame header")
 }
 
-func (f mpegFrame) Layer() string {
+func (f FrameHeader) Layer() string {
 	switch f.layer() {
 	case 1:
 		return MPEG_LAYER_1
@@ -142,11 +145,12 @@ func (f mpegFrame) Layer() string {
 	panic("Invalid mpeg layer description in frame header")
 }
 
-func (f mpegFrame) Protection() bool {
+// TODO: == CRC16 used?
+func (f FrameHeader) Protection() bool {
 	return protectionMask.Decode(f) == 1
 }
 
-func (f mpegFrame) Bitrate() int {
+func (f FrameHeader) BitrateInKbps() int {
 	bitrate := bitrateMask.Decode(f)
 	switch f.Version() {
 	case MPEG_VERSION_1_0:
@@ -319,7 +323,7 @@ func (f mpegFrame) Bitrate() int {
 	panic("Invalid bitrate in frame header")
 }
 
-func (f mpegFrame) SampleRate() int {
+func (f FrameHeader) SampleRate() uint32 {
 	sampleRate := sampleRateMask.Decode(f)
 	switch f.Version() {
 	case MPEG_VERSION_1_0:
@@ -354,15 +358,29 @@ func (f mpegFrame) SampleRate() int {
 	panic("Invalid sample rate in frame header")
 }
 
-func (f mpegFrame) Padding() bool {
+func (f FrameHeader) SamplesPerFrame() int {
+	if f.layer() == 1 {
+		return 384
+	}
+
+	// layer 2: always 1152 samples/frame
+	// layer 3: MPEG1: 1152 samples/frame, MPEG2/2.5: 576
+	// samples/frame
+	if f.layer() == 2 || f.Version() == MPEG_VERSION_1_0 {
+		return 1152
+	}
+	return 576
+}
+
+func (f FrameHeader) Padding() bool {
 	return paddingMask.Decode(f) == 1
 }
 
-func (f mpegFrame) Private() bool {
+func (f FrameHeader) Private() bool {
 	return privateMask.Decode(f) == 1
 }
 
-func (f mpegFrame) ChannelMode() string {
+func (f FrameHeader) ChannelMode() string {
 	switch channelModeMask.Decode(f) {
 	case 0:
 		return CHANNEL_MODE_STEREO
@@ -376,7 +394,14 @@ func (f mpegFrame) ChannelMode() string {
 	panic("Invalid channel mode in frame header")
 }
 
-func (f mpegFrame) ModeExtension() string {
+func (f FrameHeader) Channels() int {
+	if f.ChannelMode() == CHANNEL_MODE_MONO {
+		return 1
+	}
+	return 2
+}
+
+func (f FrameHeader) ModeExtension() string {
 	if f.ChannelMode() != CHANNEL_MODE_JOINT_STEREO {
 		return MODE_EXTENSION_NA
 	}
@@ -410,15 +435,15 @@ func (f mpegFrame) ModeExtension() string {
 	panic("Invalid mode extension in frame header")
 }
 
-func (f mpegFrame) Copyrighted() bool {
+func (f FrameHeader) Copyrighted() bool {
 	return copyrightMask.Decode(f) == 1
 }
 
-func (f mpegFrame) Original() bool {
+func (f FrameHeader) Original() bool {
 	return originalMask.Decode(f) == 1
 }
 
-func (f mpegFrame) Emphasis() string {
+func (f FrameHeader) Emphasis() string {
 	switch emphasisMask.Decode(f) {
 	case 0:
 		return EMPHASIS_NONE
@@ -431,20 +456,44 @@ func (f mpegFrame) Emphasis() string {
 }
 
 // TODO: verify if the calculations are ok, or should we use int64
-func (f mpegFrame) LengthInBytes() int {
-	pad := 0
+func (f FrameHeader) LengthInBytes() int {
+	pad := uint32(0)
 	if f.Padding() {
 		pad = 1
 	}
 	var length int
 	if f.layer() == 1 {
-		length = 48000*f.Bitrate()/f.SampleRate() + pad*4
+		length = int(48000*uint32(f.BitrateInKbps())/f.SampleRate() + pad*4)
 	} else {
-		length = 144000*f.Bitrate()/f.SampleRate() + pad
+		length = int(144000*uint32(f.BitrateInKbps())/f.SampleRate() + pad)
 	}
 	return length
 }
 
+func (f FrameHeader) SideInfoStart() int {
+	if f.Protection() {
+		return 6
+	}
+	return 4
+}
+
+func (f FrameHeader) SideInfoSize() int {
+	if f.Version() == MPEG_VERSION_1_0 {
+		if f.Channels() == 2 {
+			return 32
+		}
+		return 17
+	}
+
+	if f.Channels() == 2 {
+		return 17
+	}
+	return 9
+}
+
+func (f FrameHeader) SideInfoEnd() int {
+	return f.SideInfoStart() + f.SideInfoSize()
+}
 
 func unpackInteger(b4 []byte) int32 {
 	return int32(b4[0])<<24 + int32(b4[1])<<16 + int32(b4[2])<<8 + int32(b4[3])

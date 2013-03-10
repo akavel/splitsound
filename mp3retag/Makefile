@@ -14,7 +14,7 @@ GBROOT=..
 GC+= -I $(GBROOT)/_obj
 LD+= -L $(GBROOT)/_obj
 
-# gb: default target is in GBROOT this way
+# gb: default target
 command:
 
 include $(GOROOT)/src/Make.cmd
@@ -23,5 +23,3 @@ include $(GOROOT)/src/Make.cmd
 $(GBROOT)/bin/$(TARG): $(TARG)
 	mkdir -p $(dir $@); cp -f $< $@
 command: $(GBROOT)/bin/$(TARG)
-
-

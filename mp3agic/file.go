@@ -21,7 +21,7 @@ type File struct {
 	emphasis      string
 	layer         string
 	modeExtension string
-	sampleRate    int
+	sampleRate    uint32
 	version       string
 	copyrighted   bool
 	original      bool
@@ -135,15 +135,15 @@ func (f *File) scanBlockForStart(buf []byte, readn int, offset int64, tmpOffset 
 			continue
 		}
 
-		frame, err := newMpegFrame(buf[tmpOffset : tmpOffset+4])
+		frame, err := NewFrameHeader(buf[tmpOffset : tmpOffset+4])
 		if err != nil { // could not decode
 			tmpOffset++
 			continue
 		}
 
-		if f.xingOffset < 0 && isXingFrame(buf[tmpOffset:]) {
+		if f.xingOffset < 0 && HasXingFrameTag(buf[tmpOffset:]) {
 			f.xingOffset = offset + int64(tmpOffset)
-			f.xingBitrate = frame.Bitrate()
+			f.xingBitrate = frame.BitrateInKbps()
 			tmpOffset += frame.LengthInBytes()
 			continue
 		}
@@ -158,7 +158,7 @@ func (f *File) scanBlockForStart(buf []byte, readn int, offset int64, tmpOffset 
 		f.copyrighted = frame.Copyrighted()
 		f.original = frame.Original()
 		f.frameCount++
-		f.addBitrate(frame.Bitrate())
+		f.addBitrate(frame.BitrateInKbps())
 		tmpOffset += frame.LengthInBytes()
 		break
 	}
@@ -167,7 +167,7 @@ func (f *File) scanBlockForStart(buf []byte, readn int, offset int64, tmpOffset 
 
 func (f *File) scanBlock(buf []byte, readn int, offset int64, tmpOffset int) (int, os.Error) {
 	for tmpOffset < readn-MINIMUM_BUFFER_LENGTH {
-		frame, err := newMpegFrame(buf[tmpOffset : tmpOffset+4])
+		frame, err := NewFrameHeader(buf[tmpOffset : tmpOffset+4])
 		if err != nil {
 			return 0, os.NewError("Could not decode MPEG frame: " + err.String())
 		}
@@ -181,7 +181,7 @@ func (f *File) scanBlock(buf []byte, readn int, offset int64, tmpOffset int) (in
 		}
 		f.endOffset = newEndOffset
 		f.frameCount++
-		f.addBitrate(frame.Bitrate())
+		f.addBitrate(frame.BitrateInKbps())
 		tmpOffset += frame.LengthInBytes()
 	}
 	return tmpOffset, nil
@@ -210,7 +210,7 @@ func (f *File) extractCustomTag(stream io.ReadSeeker) os.Error {
 	return nil
 }
 
-func (f *File) sanityCheckFrame(frame *mpegFrame, offset int64) os.Error {
+func (f *File) sanityCheckFrame(frame *FrameHeader, offset int64) os.Error {
 	if f.SampleRate() != frame.SampleRate() {
 		return os.NewError("Inconsistent frame header (sample rate)")
 	}
@@ -259,7 +259,7 @@ func (f *File) Layer() string {
 	return f.layer
 }
 
-func (f *File) SampleRate() int {
+func (f *File) SampleRate() uint32 {
 	return f.sampleRate
 }
 
@@ -352,6 +352,6 @@ func probeXing(buf []byte, offset int) bool {
 	return probe == "Xing" || probe == "Info"
 }
 
-func isXingFrame(buf []byte) bool {
+func HasXingFrameTag(buf []byte) bool {
 	return probeXing(buf, 13) || probeXing(buf, 21) || probeXing(buf, 36)
 }
