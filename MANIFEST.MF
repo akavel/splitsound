@@ -1,0 +1,5 @@
+Manifest-Version: 1.0
+Class-Path: jid3.jar
+Sealed: true
+Main-Class: de.zebee.mpa.MainCLI
+
