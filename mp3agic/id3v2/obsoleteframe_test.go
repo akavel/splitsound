@@ -1,4 +1,5 @@
 package id3v2_test
+
 /*
 import (
 	"id3v2"

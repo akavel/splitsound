@@ -2,8 +2,8 @@ package id3v2_test
 
 import (
 	asrt "assert"
-	"mp3agic/id3v2"
 	"io"
+	"mp3agic/id3v2"
 	"os"
 	"testing"
 )

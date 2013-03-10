@@ -2,8 +2,8 @@ package mp3agic
 
 import (
 	"io"
-	"os"
 	"mp3agic/id3v2"
+	"os"
 )
 
 type File struct {
