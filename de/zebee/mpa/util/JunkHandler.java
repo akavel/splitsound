@@ -1,4 +1,4 @@
-package de.zebee.mpa;
+package de.zebee.mpa.util;
 
 import java.io.IOException;
 
@@ -8,7 +8,7 @@ import java.io.IOException;
 public interface JunkHandler {
 
     public void write(int bite) throws IOException;
-    
+
     public void endOfJunkBlock() throws IOException;
 
 }
