@@ -1,0 +1,6 @@
+glob:*.8
+glob:*.exe
+glob:*.a
+glob:_testmain.go
+glob:Console.bat 
+glob:go-env.bat 
