@@ -7,8 +7,8 @@ import java.io.IOException;
  */
 public interface JunkHandler {
 
-	public void write(int bite) throws IOException;
-	
-	public void endOfJunkBlock() throws IOException;
+    public void write(int bite) throws IOException;
+    
+    public void endOfJunkBlock() throws IOException;
 
 }
